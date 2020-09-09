@@ -1,0 +1,188 @@
+---
+title: "ITM 818 Data Management and Visualization"
+subtitle: 'Homework 4: Data Visualization and Modeling in R'
+output:
+  html_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+#Imports
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(gridExtra)
+library(boot)
+library(leaps)
+```
+
+Part I.
+
+Used car auctions. One of the biggest challenges of an auto dealership purchasing a used car at an auto auction is the risk that the vehicle might have serious issues that prevent it from being sold to customers. The auto community calls these unfortunate purchases “kicks.”
+Kicked cars often result when there are tampered odometers, mechanical issues the dealer is not able to address, issues with getting the vehicle title from the seller, or some other unforeseen problem. Kicked cars can be very costly to dealers for transportation cost, throw-away repair work, and market losses in reselling the vehicle.
+Modelers who can figure out which cars have a higher risk of being kicked can provide real value to dealerships trying to provide the best inventory selection possible to their customers.
+The goal of this problem is to predict if the car purchased at the auction is a Kick (bad buy).
+Dataset: please find the CSV dataset and the Excel data dictionary. Each observation is a transaction. 
+
+IsBadBuy is the response variable.
+
+Please use R (any packages such as ggplot2 and boot, etc.) to answer the following questions. (30 points)
+```{r}
+kickedCars <- read.csv("/Users/nidhi/Desktop/Nido Drive/ITM 818 Data Mgmt and Vis/Homework/HW4/kickedCars.csv", header=TRUE)
+View(kickedCars)
+cars = kickedCars
+```
+1. Do the proportions of vehicle sizes differ across American manufacturers? Which American manufacturers prefer van (in terms of percentage)? Please develop a single visualization to demonstrate the answer. (5 points)
+```{r}
+ggplot(data=cars)+
+  geom_bar(mapping=aes(x=TopThreeAmericanName,fill=(factor(Size)),position="fill"))+
+  scale_color_brewer(palette="Paired")+
+  theme(axis.text.x = element_text(angle = 90, hjust =1, vjust = 0.5))
+```
+From the graph, it is clear that the count is largest for CRYSLER, and hence they prefer Van more than other manufacturer.
+
+2. Compare the distributional density of continuous attribute odometer across different nationalities. Are the distributions very different from each other? (5 points)
+
+```{r}
+ggplot(data=cars)+geom_density(mapping=aes(x=VehOdo,fill=Nationality),color="white",position="stack")
+
+```
+We can see that the density of American > Other > Other Asian > Top Line Asian. However, they have the same mean of VehOdo as their peaks are almost the same.
+
+3. Use a stacked bar chart to show the total number of “bad buys” for each manufacturer and year. List the top 3 manufacturers that have the largest total number of bad buys. (Hint: notice that it is total number of transactions that are “bad buy,” not the total number of transactions.) (5 points)
+
+```{r}
+bad_buys = cars %>%
+          group_by(TopThreeAmericanName,VehYear)%>%
+          summarise(badbuys = sum(IsBadBuy)) %>%
+          arrange(desc(badbuys))
+
+#notice that bad_buys have Other as their least count -> so I'm removing it.
+bad_buys=bad_buys[bad_buys$TopThreeAmericanName!='OTHER',]
+
+ggplot(data=bad_buys,mapping=aes(x=TopThreeAmericanName, y = badbuys, fill=factor(VehYear)))+
+  geom_bar(stat = "identity")
+```
+4. Use slide-by-slide boxplots show the distribution of “MMRCurrentRetailAveragePrice” for each vehicle year. Draw the same graph for “MMRCurrentRetailCleanPrice” as well. Comparing the two graphs, which group has higher average prices? Is this conclusion consistent for different years? Hint: vehicle year must be converted to a factor data. (5 points)
+```{r}
+ggplot(cars, aes(x=MMRCurrentRetailAveragePrice, y=factor(VehYear))) + geom_boxplot() +coord_flip()
+ggplot(cars, aes(x=MMRCurrentRetailCleanPrice, y=factor(VehYear))) + geom_boxplot() +coord_flip()
+
+```
+You can see that the median shifts upwards when we compare the graph 1 and graph 2. This means that group: MMRCurrentRetailCleanPrice has a higher price range and it is consistent with all the years.
+
+
+5. Focus on those car manufacturers that had more than 300 bad buys, and then show the “proportion of bad buy” for each manufacturer and vehicle year, but in a different visualization tool (do not use bar chart) Hint: use a chart for summary statistics. (5 points)
+```{r}
+
+bad_buys = cars %>%
+          group_by(TopThreeAmericanName,VehYear)%>%
+          summarise(badbuys = sum(IsBadBuy),count=n(),proportionOfBadGuys=badbuys/count)  %>%
+          filter((badbuys)>300)
+
+
+ggplot(bad_buys, aes(x= factor(VehYear), y = proportionOfBadGuys)) + geom_point(position=position_dodge(0.1),size=3)+
+ geom_line(aes(group=TopThreeAmericanName,color=TopThreeAmericanName),position=position_dodge(0.1))
+
+```
+
+
+6. For vehicles of top three American manufactures (see attribute TopThreeAmericanName), what is the relationship between odometer and auction price of the vehicle in average condition at the time of purchase (MMRAcquisitionAuctionAveragePrice)? Is that relationship different depending on whether the transactions are “bad buys?” Please use a single scatter plot to show the relationship and create two “linear model” smoothed lines with confidence intervals (standard errors), one for “good buys” and one for “bad buys.” Hint: use a small point size, so that the scatter plot is easier to view. (5 points)
+
+```{r}
+cars1=cars[cars$TopThreeAmericanName!='OTHER',]
+
+ggplot(data=cars1, aes(x=VehOdo,y=MMRAcquisitionAuctionAveragePrice)) +
+  geom_point(alpha=0.2,size=0.0001)+
+  geom_smooth(aes(color=factor(IsBadBuy)),method="lm",se=TRUE)
+
+```
+We can see that most of the odometer is between ranfe 45000 and 90000 and auction price of the vehicle in average condition at the time of purchase is between 2000 and 10000. The "lm" is fairly horizontal for Good buy and Bady Buy => signifying fairly linear relationship. 
+
+7. We then decide to use logistic regression to predict IsBadBuy using the following predictors: VehicleAge, TopThreeAmericanName, WheelType, VehOdo, Size, VehBCost, IsOnline, and WarrantyCost. Please apply the validation set approach to evaluate performance of the model in terms of accuracy, precision and recall. Hint: use sample() function to generate a vector of TRUE/FALSE with probabilities 0.7 and 0.3: 
+train.index=sample(c(TRUE,FALSE),size=nrow(data),prob=c(0.7,0.3),replace=TRUE).
+
+```{r}
+
+train.index=sample(c(TRUE,FALSE),size=nrow(cars),prob=c(0.7,0.3),replace=TRUE)
+# Create training set: training_set
+train.data <- cars[train.index, ]
+# Create test set: test_set
+test.data <- cars[-train.index, ]
+
+
+model1 = glm(IsBadBuy ~ VehicleAge+ as.factor(TopThreeAmericanName)+as.factor(WheelType)+ VehOdo+ as.factor(Size)+ VehBCost+ as.factor(IsOnlineSale)+ WarrantyCost,
+             data = train.data, family = binomial(link="logit") )
+summary(model1)
+
+test.data$prob=predict(model1,test.data,type="response")
+test.data$pred=ifelse(test.data$prob>0.5,1,0)
+confusion=table(actual=test.data$IsBadBuy,predicted=test.data$pred)
+confusion
+TP=confusion[1,1]
+FN=confusion[1,2]
+FP=confusion[2,1]
+TN=confusion[2,2]
+accuracy=(TP+TN)/nrow(test.data)
+precision=TP/(TP+FP)
+recall=TP/(TP+FN)
+error=1-accuracy
+data.frame(accuracy,precision,recall,error)
+
+```
+Given that the proportions of bad buy and good buy are 87.7% and 12.3%, respectively, what can we comment on the prediction performance of the logistic regression model? (10 points)
+
+We can see that the accuracy achieved by the model is 89.4%, which means the data predicts the Bad buy as a bad buy and Good buy as a good buy 89.4% of the time.
+
+
+
+8. Finally, we apply a logistic regression model with the same set of predictors as (7), using 10-fold cross-validation to evaluate its predictive performance. Please calculate the cross-validation-based (average) accuracy, precision, and recall. Hint: use the “boot” package. (10 points)
+
+```{r}
+model2=glm(IsBadBuy ~ VehicleAge+ as.factor(TopThreeAmericanName)+as.factor(WheelType)+ VehOdo+ as.factor(Size)+ VehBCost+ as.factor(IsOnlineSale)+ WarrantyCost,
+             data = train.data)
+
+cost.error=function(r, pi = 0) mean(abs(r-pi)>0.5)
+cv.error=boot::cv.glm(train.data,model2,cost=cost.error,K=10)
+
+cost.accuracy=function(r, pi = 0) mean(abs(r-pi)<0.5)
+cv.accuracy=boot::cv.glm(train.data,model2,cost=cost.accuracy,K=10)
+
+cost.precision=function(r, pi = 0) { 
+  TP=sum((pi>0.5)&(r==1))
+  FP=sum((pi>0.5)&(r==0))
+  return(TP/(TP+FP))
+}
+cost.recall=function(r, pi = 0) { 
+  TP=sum((pi>0.5)&(r==1))
+  FN=sum((pi<=0.5)&(r==1))
+  return(TP/(TP+FN))
+}
+cv.precision=boot::cv.glm(train.data,model2,cost=cost.precision,K=10)
+cv.recall=boot::cv.glm(train.data,model2,cost=cost.recall,K=10)
+
+data.frame(accuracy = cv.accuracy$delta[1],recall = cv.recall$delta[1],precision = cv.precision$delta[1],error = cv.error$delta[1])
+
+```
+9. In question (7) and (8), we only add a subset of the predictors. Discuss the possibility of including additional predictors into the model. Which variables should or should not be included? Why? This is an open question; you should discuss at least three variables. (10 points)
+
+I have considered 3 additional variables to my model - MMRAcquisitionAuctionAveragePrice, Nationality,Auction
+
+
+```{r}
+modelAll= glm(IsBadBuy ~VehicleAge+ as.factor(TopThreeAmericanName)+as.factor(WheelType)+ VehOdo+ as.factor(Size)+ VehBCost+ as.factor(IsOnlineSale)+ WarrantyCost + MMRAcquisitionAuctionAveragePrice + as.factor(Auction) +as.factor(Nationality) ,
+             data = train.data, family = binomial(link="logit") )
+summary(modelAll)
+
+```
+MMRAcquisitionAuctionAveragePrice, Nationality,Auction are the added new variables 
+
+1. MMRAcquisitionAuctionAveragePrice is significant because it's p-value < 0.05 ->  we can include tihs is our model.
+
+2. Nationality shows no significance difference as NAtionality = OTHER, NAtionality = OTHER ASIAN and Nationality = TOP LINE ASIAN all have the same relationship with NATIONALITY = AMERICA. Thus, it is not useful to add this variable to our model.
+
+3. Auction -> AUCTION = OTHER is significantly related to the reference AUCTION = ADESA. We can create a column for Auction=other as a dummy variable and use it in our model. 
