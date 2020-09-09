@@ -1,9 +1,13 @@
 ---
 title: "ITM 818 Data Management and Visualization"
-subtitle: 'Homework 4: Data Visualization and Modeling in R'
-output:
-  html_document: default
-  word_document: default
+knit: (function(input_file, encoding) {
+  out_dir <- 'docs';
+  rmarkdown::render(input_file,
+ encoding=encoding,
+ output_file=file.path(dirname(input_file), out_dir, 'index.html'))})
+ 
+subtitle: 'Data Visualization and Modeling in R'
+
 ---
 
 ```{r setup, include=FALSE}
@@ -32,7 +36,7 @@ IsBadBuy is the response variable.
 
 Please use R (any packages such as ggplot2 and boot, etc.) to answer the following questions. (30 points)
 ```{r}
-kickedCars <- read.csv("/Users/nidhi/Desktop/Nido Drive/ITM 818 Data Mgmt and Vis/Homework/HW4/kickedCars.csv", header=TRUE)
+kickedCars <- read.csv("/Users/nidhi/Desktop/temp-github/usedCarsAuction/kickedCars.csv", header=TRUE)
 View(kickedCars)
 cars = kickedCars
 ```
